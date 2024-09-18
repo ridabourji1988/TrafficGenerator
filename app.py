@@ -1,22 +1,17 @@
 import subprocess
 import os
 from playwright.async_api import async_playwright
-
-# Ensure Playwright downloads its required browsers if not already installed
-if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-    subprocess.run(["playwright", "install", "firefox"], check=True)
-    subprocess.run(["playwright", "install", "chromium"], check=True)
-
-
-import streamlit as st
 import asyncio
-import time
-import threading
 import logging
 import random
 from datetime import datetime
 from playwright.async_api import async_playwright, Error as PlaywrightError
 import queue
+
+# Ensure Playwright downloads its required browsers if not already installed
+if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
+    subprocess.run(["playwright", "install", "firefox"], check=True)
+    subprocess.run(["playwright", "install", "chromium"], check=True)
 
 # Log file configuration
 log_file_path = 'simulation.log'
@@ -27,7 +22,7 @@ logging.basicConfig(level=logging.INFO,
                     handlers=[logging.StreamHandler(), logging.FileHandler(log_file_path)])
 
 # Global variables for controlling the simulation
-is_running = False
+is_running = True
 semaphore = None
 log_queue = queue.Queue()  # Queue for logging
 
@@ -75,23 +70,13 @@ LINKEDIN_REFERRERS = [
 
 # Define a dictionary with user colors
 USER_COLORS = {
-    1: 'blue',
-    2: 'yellow',
-    3: 'green',
-    4: 'red',
-    5: 'cyan',
-    6: 'magenta',
-    7: 'orange',
-    8: 'purple',
-    9: 'brown',
-    10: 'pink'
+    1: 'blue', 2: 'yellow', 3: 'green', 4: 'red', 5: 'cyan',
+    6: 'magenta', 7: 'orange', 8: 'purple', 9: 'brown', 10: 'pink'
 }
 
 # Utility function for logging with color per user
 def log_and_print(message, user_number=None):
-    # Assign color based on user number
     color = USER_COLORS.get(user_number, 'white')  # Default to white if user number not specified
-    # Wrap the log message in a span with the color
     colored_message = f'<span style="color:{color};">{message}</span>'
     log_queue.put(colored_message)
     logging.info(message)  # Also log it in the file
@@ -121,7 +106,6 @@ async def simulate_user(user_number, semaphore):
 
         try:
             async with async_playwright() as p:
-                # Launch the browser with proxy settings
                 browser = await p.chromium.launch(proxy={'server': 'socks5://localhost:9050'})
                 context = await browser.new_context(
                     user_agent=user_agent,
@@ -133,8 +117,6 @@ async def simulate_user(user_number, semaphore):
                 await page.goto(linkedin_referrer, timeout=60000)
                 log_and_print(f"User {user_number} - Visiting LinkedIn: {linkedin_referrer}", user_number=user_number)
                 await asyncio.sleep(random.uniform(20, 60))  # Simulate time spent on page
-
-                # Simulate mouse movements and scrolling like a real user
                 await simulate_mouse_movement(page)
                 await simulate_scrolling(page)
 
@@ -142,54 +124,42 @@ async def simulate_user(user_number, semaphore):
                 visited_insights = random.sample(INSIGHT_PAGES, k=random.randint(2, 3))
                 for insight_page in visited_insights:
                     log_and_print(f"User {user_number} - Visiting insight page: {insight_page}", user_number=user_number)
-
                     retry_count = 0
                     max_retries = 3
-
                     while retry_count < max_retries:
                         try:
                             await page.goto(insight_page, timeout=60000)
                             log_and_print(f"User {user_number} - Successfully visited: {insight_page}", user_number=user_number)
-
-                            # Simulate mouse and scroll behavior after loading the page
                             await simulate_mouse_movement(page)
                             await simulate_scrolling(page)
-
-                            break  # Exit the retry loop on success
+                            break
                         except PlaywrightError as e:
                             retry_count += 1
                             log_and_print(f"User {user_number} - Error visiting {insight_page}: {e} (Retry {retry_count}/{max_retries})", user_number=user_number)
-                            await asyncio.sleep(2)  # Backoff before retrying
+                            await asyncio.sleep(2)
                             if retry_count == max_retries:
                                 log_and_print(f"User {user_number} - Failed to visit {insight_page} after {max_retries} retries", user_number=user_number)
-
                     await asyncio.sleep(random.uniform(5*60, 10*60))  # Simulate reading time on insight page
 
                 # Step 3: Visit Service Pages (2-3)
                 visited_services = random.sample(SERVICE_PAGES, k=random.randint(2, 3))
                 for service_page in visited_services:
                     log_and_print(f"User {user_number} - Visiting service page: {service_page}", user_number=user_number)
-
                     retry_count = 0
                     max_retries = 3
-
                     while retry_count < max_retries:
                         try:
                             await page.goto(service_page, timeout=60000)
                             log_and_print(f"User {user_number} - Successfully visited: {service_page}", user_number=user_number)
-
-                            # Simulate mouse and scroll behavior after loading the page
                             await simulate_mouse_movement(page)
                             await simulate_scrolling(page)
-
-                            break  # Exit the retry loop on success
+                            break
                         except PlaywrightError as e:
                             retry_count += 1
                             log_and_print(f"User {user_number} - Error visiting {service_page}: {e} (Retry {retry_count}/{max_retries})", user_number=user_number)
-                            await asyncio.sleep(2)  # Backoff before retrying
+                            await asyncio.sleep(2)
                             if retry_count == max_retries:
                                 log_and_print(f"User {user_number} - Failed to visit {service_page} after {max_retries} retries", user_number=user_number)
-
                     await asyncio.sleep(random.uniform(2, 5))  # Simulate time spent on service page
 
                 # Step 4: Visit the Contact Page
@@ -218,68 +188,13 @@ async def main_simulation(total_users=10, concurrent_users=3):
 
     await asyncio.gather(*tasks)
 
-# Function to start the simulation in a background thread
-def start_simulation(total_users, concurrent_users):
-    global is_running
-    if not is_running:
-        is_running = True
-        asyncio.run(main_simulation(total_users, concurrent_users))
-        is_running = False
-        log_and_print("Simulation completed.")
-    else:
-        log_and_print("Simulation is already running!")
+# Function to run the simulation
+def run_simulation():
+    total_users = 10  # You can adjust this number
+    concurrent_users = 3  # You can adjust this number
+    logging.info(f"Starting simulation with {total_users} total users and {concurrent_users} concurrent users")
+    asyncio.run(main_simulation(total_users, concurrent_users))
+    logging.info("Simulation completed.")
 
-# Streamlit UI
-st.title("Web Scraping Simulation with Streamlit")
-st.write("Start or stop the simulation, and view the logs in real time.")
-
-# Input parameters for simulation
-total_users = st.number_input("Total users", min_value=1, max_value=10000, value=10)  # No limit on users now
-concurrent_users = st.number_input("Concurrent users", min_value=1, max_value=100, value=3)
-
-# Create start/stop buttons for simulation control
-start_button = st.button("Start Simulation")
-stop_button = st.button("Stop Simulation")
-
-# Handle button clicks
-if start_button:
-    threading.Thread(target=start_simulation, args=(total_users, concurrent_users), daemon=True).start()
-
-if stop_button:
-    is_running = False
-    log_and_print("Stopping simulation...")
-
-# Custom CSS for log styling
-st.write("""
-    <style>
-        .log-output {
-            background-color: black;
-            color: white;
-            width: 100%;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .stTextArea [data-testid="stTextArea"] {
-            width: 100%;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# Display logs in a text area with black background and colored user messages
-st.write("### Logs:")
-log_placeholder = st.empty()
-
-# Modified read_logs to return colored logs in HTML format
-def read_logs():
-    """Read the logs from the log queue (most recent on top)."""
-    logs = list(log_queue.queue)[-100:]  # Keep the last 100 logs
-    logs.reverse()  # Reverse for most recent on top
-    return '<br>'.join(logs)
-
-# Periodically update the logs in the main thread (every 3 seconds)
-log_key = 0
-while True:
-    logs_html = read_logs()  # Read logs and format them as HTML
-    log_placeholder.markdown(f'<div class="log-output">{logs_html}</div>', unsafe_allow_html=True)  # Display logs
-    log_key += 1  # Increment the key for the next iteration
-    time.sleep(3)  # Sleep for 3 seconds before updating again
+if __name__ == "__main__":
+    run_simulation()
