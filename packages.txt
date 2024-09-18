@@ -7,3 +7,13 @@ libxdamage1
 libxrandr2
 libgbm1
 libasound2
+libxcb-shm0
+libx11-xcb1
+libxcursor1
+libxfixes3
+libgtk-3-0
+libpangocairo-1.0-0
+libpango-1.0-0
+libcairo-gobject2
+libcairo2
+libgdk-pixbuf-2.0-0
