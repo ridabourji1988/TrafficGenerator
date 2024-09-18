@@ -121,6 +121,7 @@ async def simulate_user(user_number, semaphore):
 
         try:
             async with async_playwright() as p:
+                # Launch the browser with proxy settings
                 browser = await p.chromium.launch(proxy={'server': 'socks5://localhost:9050'})
                 context = await browser.new_context(
                     user_agent=user_agent,
