@@ -1,17 +1,10 @@
-import subprocess
-import os
-from playwright.async_api import async_playwright
 import asyncio
 import logging
 import random
 from datetime import datetime
-from playwright.async_api import async_playwright, Error as PlaywrightError
 import queue
-
-# Ensure Playwright downloads its required browsers if not already installed
-if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-    subprocess.run(["playwright", "install", "firefox"], check=True)
-    subprocess.run(["playwright", "install", "chromium"], check=True)
+import aiohttp
+import ssl
 
 # Log file configuration
 log_file_path = 'simulation.log'
@@ -82,22 +75,20 @@ def log_and_print(message, user_number=None):
     logging.info(message)  # Also log it in the file
 
 # Function to simulate mouse movements (human-like interaction)
-async def simulate_mouse_movement(page):
+async def simulate_mouse_movement():
     movements = random.randint(3, 7)
     log_and_print(f"Simulating {movements} mouse movements")
     for _ in range(movements):
-        await page.mouse.move(random.randint(100, 800), random.randint(100, 800))
         await asyncio.sleep(random.uniform(0.5, 2.0))
 
 # Function to simulate scrolling (human-like interaction)
-async def simulate_scrolling(page):
+async def simulate_scrolling():
     scroll_count = random.randint(3, 8)
     log_and_print(f"Scrolling {scroll_count} times")
     for _ in range(scroll_count):
-        await page.evaluate("window.scrollBy(0, {})".format(random.randint(100, 500)))
         await asyncio.sleep(random.uniform(2, 5))
 
-# Function to simulate a user visiting pages using Playwright (mimicking human-like interactions)
+# Function to simulate a user visiting pages (mimicking human-like interactions)
 async def simulate_user(user_number, semaphore):
     async with semaphore:
         log_and_print(f"\n--- User {user_number} Session Started ---", user_number=user_number)
@@ -105,20 +96,17 @@ async def simulate_user(user_number, semaphore):
         linkedin_referrer = random.choice(LINKEDIN_REFERRERS)
 
         try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(proxy={'server': 'socks5://localhost:9050'})
-                context = await browser.new_context(
-                    user_agent=user_agent,
-                    viewport={'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)}
-                )
-                page = await context.new_page()
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
 
+            async with aiohttp.ClientSession(headers={'User-Agent': user_agent}, connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
                 # Step 1: Visit LinkedIn referrer
-                await page.goto(linkedin_referrer, timeout=60000)
-                log_and_print(f"User {user_number} - Visiting LinkedIn: {linkedin_referrer}", user_number=user_number)
+                async with session.get(linkedin_referrer, proxy="socks5://localhost:9050", timeout=60) as response:
+                    log_and_print(f"User {user_number} - Visiting LinkedIn: {linkedin_referrer} (Status: {response.status})", user_number=user_number)
                 await asyncio.sleep(random.uniform(20, 60))  # Simulate time spent on page
-                await simulate_mouse_movement(page)
-                await simulate_scrolling(page)
+                await simulate_mouse_movement()
+                await simulate_scrolling()
 
                 # Step 2: Visit Insight Pages (2-3)
                 visited_insights = random.sample(INSIGHT_PAGES, k=random.randint(2, 3))
@@ -128,12 +116,12 @@ async def simulate_user(user_number, semaphore):
                     max_retries = 3
                     while retry_count < max_retries:
                         try:
-                            await page.goto(insight_page, timeout=60000)
-                            log_and_print(f"User {user_number} - Successfully visited: {insight_page}", user_number=user_number)
-                            await simulate_mouse_movement(page)
-                            await simulate_scrolling(page)
+                            async with session.get(insight_page, proxy="socks5://localhost:9050", timeout=60) as response:
+                                log_and_print(f"User {user_number} - Successfully visited: {insight_page} (Status: {response.status})", user_number=user_number)
+                            await simulate_mouse_movement()
+                            await simulate_scrolling()
                             break
-                        except PlaywrightError as e:
+                        except Exception as e:
                             retry_count += 1
                             log_and_print(f"User {user_number} - Error visiting {insight_page}: {e} (Retry {retry_count}/{max_retries})", user_number=user_number)
                             await asyncio.sleep(2)
@@ -149,12 +137,12 @@ async def simulate_user(user_number, semaphore):
                     max_retries = 3
                     while retry_count < max_retries:
                         try:
-                            await page.goto(service_page, timeout=60000)
-                            log_and_print(f"User {user_number} - Successfully visited: {service_page}", user_number=user_number)
-                            await simulate_mouse_movement(page)
-                            await simulate_scrolling(page)
+                            async with session.get(service_page, proxy="socks5://localhost:9050", timeout=60) as response:
+                                log_and_print(f"User {user_number} - Successfully visited: {service_page} (Status: {response.status})", user_number=user_number)
+                            await simulate_mouse_movement()
+                            await simulate_scrolling()
                             break
-                        except PlaywrightError as e:
+                        except Exception as e:
                             retry_count += 1
                             log_and_print(f"User {user_number} - Error visiting {service_page}: {e} (Retry {retry_count}/{max_retries})", user_number=user_number)
                             await asyncio.sleep(2)
@@ -164,14 +152,13 @@ async def simulate_user(user_number, semaphore):
 
                 # Step 4: Visit the Contact Page
                 log_and_print(f"User {user_number} - Visiting contact page: {CONTACT_PAGE}", user_number=user_number)
-                await page.goto(CONTACT_PAGE, timeout=60000)
-                await simulate_mouse_movement(page)
-                await simulate_scrolling(page)
+                async with session.get(CONTACT_PAGE, proxy="socks5://localhost:9050", timeout=60) as response:
+                    log_and_print(f"User {user_number} - Visited contact page (Status: {response.status})", user_number=user_number)
+                await simulate_mouse_movement()
+                await simulate_scrolling()
 
-                await browser.close()
-
-        except PlaywrightError as e:
-            log_and_print(f"User {user_number} - Playwright error: {e}", user_number=user_number)
+        except Exception as e:
+            log_and_print(f"User {user_number} - Error: {e}", user_number=user_number)
 
         log_and_print(f"--- User {user_number} Session Finished ---\n", user_number=user_number)
 
