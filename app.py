@@ -1,3 +1,12 @@
+import subprocess
+import os
+from playwright.async_api import async_playwright
+
+# Ensure Playwright downloads its required browsers if not already installed
+if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
+    subprocess.run(["playwright", "install"], check=True)
+
+
 import streamlit as st
 import asyncio
 import time
