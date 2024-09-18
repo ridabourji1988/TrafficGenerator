@@ -121,7 +121,7 @@ async def simulate_user(user_number, semaphore):
 
         try:
             async with async_playwright() as p:
-                browser = await p.firefox.launch(proxy={'server': 'socks5://localhost:9050'})
+                browser = await p.chromium.launch(proxy={'server': 'socks5://localhost:9050'})
                 context = await browser.new_context(
                     user_agent=user_agent,
                     viewport={'width': random.randint(1024, 1920), 'height': random.randint(768, 1080)}
